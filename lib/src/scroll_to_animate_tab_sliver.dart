@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:scroll_to_animate_tab/scroll_to_animate_tab.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:rect_getter/rect_getter.dart';
+
 const Duration _kScrollDuration = Duration(milliseconds: 200);
 const EdgeInsetsGeometry _kTabMargin = EdgeInsets.symmetric(
   vertical: 5,
@@ -11,14 +12,47 @@ const EdgeInsetsGeometry _kTabPadding = EdgeInsets.symmetric(
   vertical: 5,
   horizontal: 12,
 );
+
 class ScrollToAnimateTabSliver extends StatefulWidget {
   const ScrollToAnimateTabSliver({
-    Key? key,
     required this.tabs,
-  }) : super(key: key);
+    this.tabHeight = kToolbarHeight,
+    this.tabAnimationDuration = _kScrollDuration,
+    this.bodyAnimationDuration = _kScrollDuration,
+    this.tabAnimationCurve = Curves.decelerate,
+    this.bodyAnimationCurve = Curves.decelerate,
+    this.backgroundColor = Colors.transparent,
+    this.activeTabDecoration,
+    this.inActiveTabDecoration,
+    super.key,
+  });
 
   /// List of tabs to be rendered.
   final List<ScrollableList> tabs;
+
+  /// Height of the tab at the top of the view.
+  final double tabHeight;
+
+  /// Duration of tab change animation.
+  final Duration? tabAnimationDuration;
+
+  /// Duration of inner scroll view animation.
+  final Duration? bodyAnimationDuration;
+
+  /// Animation curve used when animating tab change.
+  final Curve? tabAnimationCurve;
+
+  /// Animation curve used when changing index of inner [ScrollView]s.
+  final Curve? bodyAnimationCurve;
+
+  /// Change Tab Background Color
+  final Color? backgroundColor;
+
+  /// Change Active Tab Decoration
+  final TabDecoration? activeTabDecoration;
+
+  /// Change Inactive Tab Decoration.
+  final TabDecoration? inActiveTabDecoration;
 
   @override
   _ScrollToAnimateTabSliverState createState() =>
@@ -36,11 +70,17 @@ class _ScrollToAnimateTabSliverState extends State<ScrollToAnimateTabSliver>
   Map<int, GlobalKey<RectGetterState>> itemKeys = {};
   bool pauseRectGetterIndex = false;
   bool isAnimating = false;
+  final _index = ValueNotifier(0);
 
   @override
   void initState() {
     super.initState();
     tabController = TabController(length: widget.tabs.length, vsync: this);
+    tabController.addListener(
+      () {
+        _index.value = tabController.index;
+      },
+    );
     scrollController = AutoScrollController();
   }
 
@@ -86,19 +126,14 @@ class _ScrollToAnimateTabSliverState extends State<ScrollToAnimateTabSliver>
   }
 
   void animateAndScrollTo(int index) {
-    if (isAnimating) return;
-    isAnimating = true;
-    pauseRectGetterIndex = true;
-
     tabController.animateTo(index);
     scrollController
-        .scrollToIndex(index,
-            preferPosition: AutoScrollPosition.begin,
-            duration: const Duration(milliseconds: 300))
-        .then((_) {
-      pauseRectGetterIndex = false;
-      isAnimating = false;
-    });
+        .scrollToIndex(
+          index,
+          preferPosition: AutoScrollPosition.begin,
+          duration: const Duration(milliseconds: 300),
+        )
+        .then((_) {});
   }
 
   @override
@@ -113,23 +148,28 @@ class _ScrollToAnimateTabSliverState extends State<ScrollToAnimateTabSliver>
             slivers: [
               SliverAppBar(
                 pinned: true,
-                floating: false,
-                expandedHeight: 200.0,
+                expandedHeight: 300,
                 title: ValueListenableBuilder<bool>(
                   valueListenable: isCollapsedNotifier,
                   builder: (context, isCollapsed, child) {
-                    return AnimatedOpacity(
-                      opacity: isCollapsed ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: const Text("Scroll Demo"),
+                    if (!isCollapsed)
+                      return const Text(
+                        'Scroll Demo',
+                        style: TextStyle(color: Colors.yellow),
+                      );
+
+                    return const Text(
+                      'Scroll Demo',
+                      style: TextStyle(color: Colors.red),
                     );
                   },
                 ),
                 flexibleSpace: LayoutBuilder(
                   builder: (BuildContext context, BoxConstraints constraints) {
                     final top = constraints.biggest.height;
-                    final collapsedHeight =
-                        MediaQuery.of(context).padding.top + kToolbarHeight;
+                    final collapsedHeight = MediaQuery.of(context).padding.top +
+                        kToolbarHeight +
+                        40;
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       onCollapsed(value: top <= collapsedHeight + 10);
                     });
@@ -137,15 +177,25 @@ class _ScrollToAnimateTabSliverState extends State<ScrollToAnimateTabSliver>
                     return FlexibleSpaceBar(
                       collapseMode: CollapseMode.pin,
                       background: Container(
-                        color: Colors.blueAccent,
+                        color: Colors.grey,
                         child: Center(
-                          child: const Text(
-                            "Collapsible App Bar",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                height: 200,
+                                width: 200,
+                                color: Colors.red,
+                              ),
+                              const Text(
+                                'Collapsible App Bar',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -154,12 +204,42 @@ class _ScrollToAnimateTabSliverState extends State<ScrollToAnimateTabSliver>
                 ),
                 bottom: PreferredSize(
                   preferredSize: const Size.fromHeight(48),
-                  child: TabBar(
-                    controller: tabController,
-                    onTap: (index) => animateAndScrollTo(index),
-                    tabs:
-                        widget.tabs.map((tab) => Tab(text: tab.label)).toList(),
-                    isScrollable: true,
+                  child: Container(
+                    color: widget.backgroundColor,
+                    height: widget.tabHeight,
+                    child: TabBar(
+                      controller: tabController,
+                      isScrollable: true,
+                      padding: const EdgeInsets.all(0),
+                      indicatorWeight: BorderSide.strokeAlignCenter,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      splashBorderRadius: BorderRadius.circular(10),
+                      dividerColor: Colors.transparent,
+                      tabAlignment: TabAlignment.start,
+                      labelPadding: EdgeInsets.zero,
+                      onTap: animateAndScrollTo,
+                      indicator: const BoxDecoration(),
+                      // Remove default indicator
+                      tabs: widget.tabs.map((tab) {
+                        return ValueListenableBuilder(
+                          valueListenable: _index,
+                          builder: (context, index, child) {
+                            return Container(
+                              margin: _kTabMargin,
+                              padding: _kTabPadding,
+                              alignment: Alignment.center,
+                              decoration: index == widget.tabs.indexOf(tab)
+                                  ? widget.activeTabDecoration?.decoration
+                                  : widget.inActiveTabDecoration?.decoration,
+                              child: _buildTab(
+                                widget.tabs.indexOf(tab),
+                                index == widget.tabs.indexOf(tab),
+                              ),
+                            );
+                          },
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ),
               ),
@@ -200,6 +280,19 @@ class _ScrollToAnimateTabSliverState extends State<ScrollToAnimateTabSliver>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTab(int index, bool isSelected) {
+    if (isSelected) {
+      return Text(
+        widget.tabs[index].label,
+        style: widget.activeTabDecoration?.textStyle,
+      );
+    }
+    return Text(
+      widget.tabs[index].label,
+      style: widget.inActiveTabDecoration?.textStyle,
     );
   }
 
